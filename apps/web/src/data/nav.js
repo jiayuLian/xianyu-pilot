@@ -41,7 +41,7 @@ export const navGroups = [
     title: '系统',
     items: [
       { key: 'logs', label: '操作日志', icon: 'log' },
-      { key: 'admin-users', label: '子账号', icon: 'account' },
+      { key: 'admin-users', label: '子账号', icon: 'account', superOnly: true },
       { key: 'feedback', label: '反馈建议', icon: 'reply' },
       { key: 'ad-application', label: '广告申请', icon: 'opportunity' },
       { key: 'settings-notify', label: '通知设置', icon: 'bell' },

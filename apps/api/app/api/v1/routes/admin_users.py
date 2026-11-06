@@ -89,6 +89,40 @@ async def list_users(
     return ResultObject.success([_public(row) for row in rows])
 
 
+# /me/* 必须注册在任何 /{user_id} 路由之前。FastAPI 按声明顺序匹配，
+# 否则 GET /auth/users/me/permissions 会先命中 /{user_id}/permissions，
+# user_id 收到字符串 "me" 后 int 解析失败，返回 422。
+@router.get("/me/permissions", response_model=ResultObject[list[dict]])
+async def my_permissions(
+    db: AsyncSession = Depends(get_db),
+    current: dict = Depends(get_current_user),
+):
+    if svc.normalize_role(current.get("role")) == svc.ROLE_SUPER:
+        return ResultObject.success([{"resourceType": "*", "resourceId": None, "action": "write"}])
+    return ResultObject.success(await svc.get_permissions(db, int(current.get("user_id") or 0)))
+
+
+@router.get("/me/profile", response_model=ResultObject[dict])
+async def my_profile(
+    db: AsyncSession = Depends(get_db),
+    current: dict = Depends(get_current_user),
+):
+    user_id = int(current.get("user_id") or 0)
+    row = await svc.get_by_id(db, user_id) if user_id else None
+    if not row:
+        # 尚未迁移到表里的历史会话，按超管返回配置值
+        return ResultObject.success(
+            {
+                "id": 0,
+                "username": current.get("username"),
+                "role": svc.ROLE_SUPER,
+                "accountLimit": None,
+                "totpEnabled": False,
+            }
+        )
+    return ResultObject.success(_public(row))
+
+
 @router.post("", response_model=ResultObject[dict])
 async def create_user(
     req: CreateUserReq,
@@ -147,7 +181,7 @@ async def update_user(
 ):
     row = await svc.get_by_id(db, user_id)
     if not row:
-        return ResultObject.not_found("账号不存在")
+        return ResultObject.failed("账号不存在", code=404)
     if svc.normalize_role(row.get("role")) == svc.ROLE_SUPER:
         return ResultObject.validate_failed("超级管理员不可修改")
     if req.email and await svc.email_exists(db, req.email, exclude_id=user_id):
@@ -182,7 +216,7 @@ async def delete_user(
 ):
     row = await svc.get_by_id(db, user_id)
     if not row:
-        return ResultObject.not_found("账号不存在")
+        return ResultObject.failed("账号不存在", code=404)
     if svc.normalize_role(row.get("role")) == svc.ROLE_SUPER:
         return ResultObject.validate_failed("超级管理员不可删除")
     if int(current.get("user_id") or 0) == int(user_id):
@@ -209,7 +243,7 @@ async def reset_password(
 ):
     row = await svc.get_by_id(db, user_id)
     if not row:
-        return ResultObject.not_found("账号不存在")
+        return ResultObject.failed("账号不存在", code=404)
     strength_error = validate_password_strength(req.newPassword, row.get("username") or "")
     if strength_error:
         return ResultObject.validate_failed(strength_error)
@@ -246,7 +280,7 @@ async def set_permissions(
 ):
     row = await svc.get_by_id(db, user_id)
     if not row:
-        return ResultObject.not_found("账号不存在")
+        return ResultObject.failed("账号不存在", code=404)
     try:
         await svc.replace_permissions(
             db, user_id, [p.model_dump() for p in req.permissions]
@@ -262,34 +296,3 @@ async def set_permissions(
         logger.error("Set permissions failed", exc_info=True)
         return ResultObject.error("保存失败")
     return ResultObject.success(await svc.get_permissions(db, user_id))
-
-
-@router.get("/me/permissions", response_model=ResultObject[list[dict]])
-async def my_permissions(
-    db: AsyncSession = Depends(get_db),
-    current: dict = Depends(get_current_user),
-):
-    if svc.normalize_role(current.get("role")) == svc.ROLE_SUPER:
-        return ResultObject.success([{"resourceType": "*", "resourceId": None, "action": "write"}])
-    return ResultObject.success(await svc.get_permissions(db, int(current.get("user_id") or 0)))
-
-
-@router.get("/me/profile", response_model=ResultObject[dict])
-async def my_profile(
-    db: AsyncSession = Depends(get_db),
-    current: dict = Depends(get_current_user),
-):
-    user_id = int(current.get("user_id") or 0)
-    row = await svc.get_by_id(db, user_id) if user_id else None
-    if not row:
-        # 尚未迁移到表里的历史会话，按超管返回配置值
-        return ResultObject.success(
-            {
-                "id": 0,
-                "username": current.get("username"),
-                "role": svc.ROLE_SUPER,
-                "accountLimit": None,
-                "totpEnabled": False,
-            }
-        )
-    return ResultObject.success(_public(row))

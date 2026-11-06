@@ -41,7 +41,20 @@ import Icon from './Icon.vue'
 import { APP_VERSION, getCopyrightYear } from '../utils/appMeta.js'
 defineEmits(['navigate', 'close', 'logout'])
 const props = defineProps({ active: { type: String, required: true }, user: { type: Object, default: () => ({}) }, open: { type: Boolean, default: false } })
-const groups = navGroups
+
+// 子账号管理只有超级管理员能用。标了 superOnly 的条目对 operator / viewer
+// 直接不下发，避免点进去只看到 403。后端仍会兜底校验，这里只是体验层。
+const isSuper = computed(() => {
+  const raw = String(props.user?.role || '').toLowerCase()
+  return raw === 'super' || raw === 'admin' || raw === 'root' || raw === ''
+})
+
+const groups = computed(() => {
+  if (isSuper.value) return navGroups
+  return navGroups
+    .map(group => ({ ...group, items: group.items.filter(item => !item.superOnly) }))
+    .filter(group => group.items.length > 0)
+})
 const displayName = computed(() => props.user?.username || props.user?.displayName || props.user?.name || '管理员')
 const copyrightYear = getCopyrightYear()
 function isActive(key) {

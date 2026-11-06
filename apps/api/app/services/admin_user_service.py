@@ -312,10 +312,17 @@ async def get_permissions(db: AsyncSession, user_id: int) -> list[dict]:
 async def replace_permissions(
     db: AsyncSession, user_id: int, permissions: Iterable[dict]
 ) -> None:
+    """整体替换某用户的权限集合。
+
+    入参先去重：唯一索引 uk_admin_user_permission 里的 resource_id 允许 NULL，
+    而 MySQL 的唯一索引对 NULL 不做冲突判定，同一条「全量」权限（resource_id
+    为 NULL）重复提交会插入多行。这里在写库前收敛，保证幂等。
+    """
     await db.execute(
         text("DELETE FROM admin_user_permission WHERE user_id = :user_id"),
         {"user_id": int(user_id)},
     )
+    seen: set[tuple[str, Optional[int], str]] = set()
     for item in permissions or []:
         resource_type = str(item.get("resourceType") or item.get("resource_type") or "").strip()
         action = str(item.get("action") or "").strip().lower()
@@ -328,6 +335,11 @@ async def replace_permissions(
                 resource_id = int(raw_id)
             except (TypeError, ValueError):
                 continue
+        # write 已经隐含 read，重复的 read 行没有意义
+        key = (resource_type, resource_id, action)
+        if key in seen:
+            continue
+        seen.add(key)
         await db.execute(
             text(
                 "INSERT INTO admin_user_permission "

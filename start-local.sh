@@ -46,11 +46,20 @@ done
 
 check_port_free() {
   port=$1
+  listing=""
+  # Linux 优先 ss；ss 缺失或输出为空时退回 netstat。
+  # 注意不能用 netstat -tlnp：BSD/macOS/Git-Bash 的 netstat 不支持这组参数，
+  # 会静默失败并让检测恒返回「空闲」，端口冲突就漏过去了。
   if command -v ss >/dev/null 2>&1; then
-    ss -tlnp 2>/dev/null | grep -q ":${port} " && return 1
-  elif command -v netstat >/dev/null 2>&1; then
-    netstat -tlnp 2>/dev/null | grep -q ":${port} " && return 1
+    listing=$(ss -tln 2>/dev/null)
   fi
+  if [ -z "$listing" ] && command -v netstat >/dev/null 2>&1; then
+    listing=$(netstat -an 2>/dev/null)
+  fi
+  [ -z "$listing" ] && return 0   # 拿不到信息时按可用处理，宁可后面启动报错
+  # 同时兼容 0.0.0.0:15176（Linux/Windows）与 127.0.0.1.15176（BSD）两种写法
+  printf '%s\n' "$listing" | grep -iE 'listen' \
+    | grep -qE "[:.]${port}([[:space:]]|$)" && return 1
   return 0
 }
 
@@ -100,12 +109,73 @@ if command -v redis-cli >/dev/null 2>&1; then
   fi
 fi
 
-# 端口预检
-for p in $WEB_PORT $API_PORT $CRAWLER_PORT; do
-  if ! check_port_free "$p"; then
-    die "端口 $p 已被占用。请先停止占用进程，或修改 .env 中的端口（SERVER_PORT/CRAWLER_PORT/XYA_WEB_PORT）"
+# 端口预检 + 自动换端口
+# 裸机模式和 Docker 版共用同一套思路：默认端口被占就从 base 往后找，
+# 找到后写回 .env，下次启动直接复用，不会每次漂移。
+env_get() {
+  key=$1
+  default=$2
+  val=$(grep -E "^${key}=" .env 2>/dev/null | tail -1 | cut -d= -f2- \
+        | tr -d '"'"'"'\r' | sed 's/[[:space:]]*$//')
+  if [ -n "$val" ]; then printf '%s' "$val"; else printf '%s' "$default"; fi
+}
+
+env_set() {
+  key=$1
+  val=$2
+  if grep -qE "^${key}=" .env 2>/dev/null; then
+    sed "s|^${key}=.*|${key}=${val}|" .env > .env.tmp && mv .env.tmp .env
+  else
+    printf '%s=%s\n' "$key" "$val" >> .env
   fi
-done
+}
+
+# 从 base 起往后找可用端口；已在本轮分配的端口也跳过，避免两个服务抢同一个
+pick_port() {
+  base=$1
+  shift
+  p=$base
+  limit=$((base + 30))
+  while [ "$p" -lt "$limit" ]; do
+    taken=0
+    for r in "$@"; do
+      [ "$p" = "$r" ] && taken=1 && break
+    done
+    if [ "$taken" = "0" ] && check_port_free "$p"; then
+      printf '%s' "$p"
+      return 0
+    fi
+    p=$((p + 1))
+  done
+  return 1
+}
+
+API_PORT=$(env_get SERVER_PORT "$API_PORT")
+CRAWLER_PORT=$(env_get CRAWLER_PORT "$CRAWLER_PORT")
+WEB_PORT=$(env_get XYA_WEB_PORT "$WEB_PORT")
+
+NEW_WEB=$(pick_port "$WEB_PORT") || die "Web 端口 ${WEB_PORT}~$((WEB_PORT + 30)) 全部被占用"
+if [ "$NEW_WEB" != "$WEB_PORT" ]; then
+  info "Web 端口 $WEB_PORT 被占用，改用 $NEW_WEB"
+  WEB_PORT=$NEW_WEB
+  env_set XYA_WEB_PORT "$WEB_PORT"
+fi
+
+NEW_API=$(pick_port "$API_PORT" "$WEB_PORT") || die "API 端口 ${API_PORT}~$((API_PORT + 30)) 全部被占用"
+if [ "$NEW_API" != "$API_PORT" ]; then
+  info "API 端口 $API_PORT 被占用，改用 $NEW_API"
+  API_PORT=$NEW_API
+  env_set SERVER_PORT "$API_PORT"
+fi
+
+NEW_CRAWLER=$(pick_port "$CRAWLER_PORT" "$WEB_PORT" "$API_PORT") \
+  || die "Crawler 端口 ${CRAWLER_PORT}~$((CRAWLER_PORT + 30)) 全部被占用"
+if [ "$NEW_CRAWLER" != "$CRAWLER_PORT" ]; then
+  info "Crawler 端口 $CRAWLER_PORT 被占用，改用 $NEW_CRAWLER"
+  CRAWLER_PORT=$NEW_CRAWLER
+  env_set CRAWLER_PORT "$CRAWLER_PORT"
+fi
+
 ok "端口检查通过（Web=$WEB_PORT, API=$API_PORT, Crawler=$CRAWLER_PORT）"
 
 mkdir -p "$PID_DIR"

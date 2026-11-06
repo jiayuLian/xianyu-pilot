@@ -91,7 +91,7 @@ async def _load_permissions(user_id: int) -> list[dict]:
     try:
         import json
 
-        await redis_set(cache_key, json.dumps(permissions), expire=_PERMISSION_CACHE_TTL)
+        await redis_set(cache_key, json.dumps(permissions), ex=_PERMISSION_CACHE_TTL)
     except Exception:
         pass
     return permissions

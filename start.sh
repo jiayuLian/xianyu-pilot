@@ -165,17 +165,20 @@ print(bcrypt.hashpw(pw, bcrypt.gensalt(rounds=12)).decode())
 }
 
 # 检查端口是否被占用
+# 不能用 netstat -tlnp：BSD/macOS/Git-Bash 不支持这组参数，会静默失败，
+# 让检测恒返回「空闲」。这里统一用 -an 或 ss -tln，再按行匹配。
 check_port_available() {
   port=$1
+  listing=""
   if command -v ss >/dev/null 2>&1; then
-    if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
-      return 1
-    fi
-  elif command -v netstat >/dev/null 2>&1; then
-    if netstat -tlnp 2>/dev/null | grep -q ":${port} "; then
-      return 1
-    fi
+    listing=$(ss -tln 2>/dev/null)
   fi
+  if [ -z "$listing" ] && command -v netstat >/dev/null 2>&1; then
+    listing=$(netstat -an 2>/dev/null)
+  fi
+  [ -z "$listing" ] && return 0
+  printf '%s\n' "$listing" | grep -iE 'listen' \
+    | grep -qE "[:.]${port}([[:space:]]|$)" && return 1
   return 0
 }
 
