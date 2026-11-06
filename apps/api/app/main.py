@@ -88,7 +88,22 @@ async def lifespan(app: FastAPI):
             await ensure_instance_token(session)
     except Exception:
         logger.warning("Failed to load instance token on startup", exc_info=True)
-    
+
+    # 首次启动把 .env 配置的管理员种入 admin_user 表。表里已有账号时跳过，
+    # 避免覆盖线上改过的密码。
+    try:
+        from app.services import admin_user_service
+        async with async_session() as session:
+            seeded = await admin_user_service.ensure_super_admin(
+                session,
+                username=settings.admin_username,
+                password_hash=settings.admin_password_hash,
+            )
+            if seeded:
+                await session.commit()
+    except Exception:
+        logger.warning("Failed to seed super admin from environment", exc_info=True)
+
     # 启动 WebSocket
     try:
         from app.services.ws_startup import auto_start_all

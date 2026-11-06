@@ -11,6 +11,7 @@ from ...core.route_registry import assert_unique_routes, include_router_excludin
 from .routes import (
     account,
     admin_data_compat,
+    admin_users,
     ai_tools,
     auth,
     auto_category,
@@ -55,6 +56,7 @@ include_router_excluding(
     },
 )
 api_router.include_router(auth.router)
+api_router.include_router(admin_users.router)
 api_router.include_router(client_errors.router)
 api_router.include_router(profile.router)
 

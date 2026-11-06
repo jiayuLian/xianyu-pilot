@@ -26,6 +26,7 @@ from ....core.security import (
     verify_password,
 )
 from ....models.entities import XianyuOperationLog, XianyuSysSetting
+from ....services import admin_user_service
 from ..deps import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -137,15 +138,44 @@ async def mark_admin_security_update(db: AsyncSession, *, commit: bool = True) -
     )
 
 
-async def validate_admin_credentials(db: AsyncSession, username: str, password: str) -> Optional[str]:
+async def validate_admin_credentials(
+    db: AsyncSession, username: str, password: str
+) -> tuple[Optional[dict], Optional[str]]:
+    """校验账号密码，返回 (用户记录, 错误信息)。
+
+    优先查 admin_user 表（支持子账号）。表里没有该用户名时回退到 .env 的
+    单管理员配置，兼容尚未执行 046 迁移的旧库和首次启动场景。
+    """
     username = (username or "").strip()
     password = password or ""
     if not username or not password:
-        return "用户名或密码不能为空"
+        return None, "用户名或密码不能为空"
+
+    user = await admin_user_service.get_by_username(db, username)
+    if user:
+        if not int(user.get("status") or 0):
+            return None, "账号已被停用，请联系管理员"
+        remaining = admin_user_service.lock_remaining_seconds(user)
+        if remaining > 0:
+            return None, f"账号已锁定，请 {remaining // 60 + 1} 分钟后重试"
+
+        matched = await asyncio.to_thread(
+            verify_password, password, user.get("password_hash") or ""
+        )
+        if not matched:
+            attempts = await admin_user_service.record_failed_login(db, int(user["id"]))
+            await db.commit()
+            if attempts >= admin_user_service.DEFAULT_MAX_FAILED_ATTEMPTS:
+                return None, "密码错误次数过多，账号已锁定"
+            return None, "用户名或密码错误"
+
+        # 登录成功清零失败计数并记录来源 IP，由调用方负责 commit
+        user["password_hash"] = ""
+        return user, None
 
     password_hash = await load_admin_password_hash(db)
     if not password_hash:
-        return "管理员密码未配置，请在 .env 中设置 ADMIN_PASSWORD_HASH"
+        return None, "管理员密码未配置，请在 .env 中设置 ADMIN_PASSWORD_HASH"
     username_matches = hmac.compare_digest(username, settings.admin_username)
     password_matches = await asyncio.to_thread(
         verify_password,
@@ -153,8 +183,17 @@ async def validate_admin_credentials(db: AsyncSession, username: str, password: 
         password_hash,
     )
     if not username_matches or not password_matches:
-        return "用户名或密码错误"
-    return None
+        return None, "用户名或密码错误"
+    return (
+        {
+            "id": 0,
+            "username": username,
+            "role": admin_user_service.ROLE_SUPER,
+            "status": 1,
+            "account_limit": None,
+        },
+        None,
+    )
 
 
 async def update_admin_password(
@@ -220,20 +259,31 @@ async def enforce_login_rate_limit(request: Request) -> None:
 async def login(req: LoginReqDTO, request: Request, db: AsyncSession = Depends(get_db)):
     try:
         await enforce_login_rate_limit(request)
-        error = await validate_admin_credentials(db, req.username, req.password)
+        user, error = await validate_admin_credentials(db, req.username, req.password)
         if error:
             if error == "用户名或密码不能为空":
                 raise HTTPException(status_code=422, detail=error)
             if error.startswith("管理员密码未配置"):
                 raise HTTPException(status_code=503, detail="认证服务尚未完成管理员密码配置")
+            if error.startswith("账号已"):
+                # 停用与锁定属于不可重试状态，直接 403，避免前端反复提交
+                raise HTTPException(status_code=403, detail=error)
             await record_login_failure(request)
             raise HTTPException(status_code=401, detail="用户名或密码错误")
 
         await clear_login_failures(request)
-        token_username = settings.admin_username
-        token = create_token(token_username)
+        account = user or {}
+        token_username = account.get("username") or settings.admin_username
+        role_value = admin_user_service.normalize_role(account.get("role"))
+        account_id = int(account.get("id") or 0)
+        token = create_token(token_username, user_id=account_id, role=role_value)
         try:
-            await mark_admin_login(db, commit=False)
+            if account_id:
+                await admin_user_service.mark_login_success(
+                    db, account_id, request_client_ip(request)
+                )
+            else:
+                await mark_admin_login(db, commit=False)
             db.add(XianyuOperationLog(
                 operator=token_username,
                 operation_type="login",
@@ -252,7 +302,7 @@ async def login(req: LoginReqDTO, request: Request, db: AsyncSession = Depends(g
             )
 
         return ResultObject.success(
-            LoginRespDTO(token=token, username=token_username, role="admin")
+            LoginRespDTO(token=token, username=token_username, role=role_value)
         )
     except RedisUnavailableError:
         raise HTTPException(

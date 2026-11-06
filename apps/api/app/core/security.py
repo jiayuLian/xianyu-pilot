@@ -55,13 +55,19 @@ def validate_password_strength(password: str, username: str = "") -> str | None:
     return None
 
 
-def create_token(username: str) -> str:
+def create_token(
+    username: str,
+    *,
+    user_id: int = 0,
+    role: str = "super",
+) -> str:
     now = datetime.now(timezone.utc)
     jti = uuid.uuid4().hex
     payload = {
         "sub": "admin",
+        "uid": int(user_id or 0),
         "username": username,
-        "role": "admin",
+        "role": role or "super",
         "jti": jti,
         "iss": settings.jwt_issuer,
         "aud": settings.jwt_audience,
@@ -191,9 +197,12 @@ async def authenticate_token(token: str) -> dict[str, Any] | None:
         payload = decode_token(token)
     except jwt.PyJWTError:
         return None
-    if payload.get("sub") != "admin" or payload.get("role") != "admin":
+    if payload.get("sub") != "admin":
         return None
-    if payload.get("username") != settings.admin_username:
+    # 不再硬比对 username。子账号的 username 由数据库决定，配置项只用于
+    # 首次启动时种入超级管理员。旧 token 的 role 是 "admin"，一并放行。
+    role = str(payload.get("role") or "").strip().casefold()
+    if role not in ("admin", "super", "operator", "viewer", "root", "readonly", "read"):
         return None
     if await is_token_revoked(payload):
         return None
