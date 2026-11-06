@@ -1,9 +1,14 @@
 @echo off
-REM 一键启动脚本（Windows）：自动初始化 secrets、拉取镜像、启动服务、等待健康
+REM 一键启动脚本（Windows）：自动初始化 secrets、构建镜像、启动服务、等待健康
 REM 用法：
-REM   .\start.bat              拉取预构建镜像并启动（推荐）
-REM   .\start.bat --build      本地源码构建并启动
-REM   .\start.bat --no-pull    跳过镜像拉取（用本地已有的镜像）
+REM   .\start.bat              本地源码构建并启动（默认）
+REM   .\start.bat --pull       拉取预构建镜像并启动（官方发布镜像）
+REM   .\start.bat --no-build   不构建，直接用本地已有镜像
+REM
+REM 为什么默认源码构建：
+REM   docker-compose.yml 里 image: 的默认值指向官方发布镜像，那个镜像的代码
+REM   与本仓库不同（不带本仓库的修复与子账号功能）。默认拉取会把本地构建结果
+REM   覆盖掉，所以这里默认走 build。要用官方镜像请显式加 --pull。
 REM
 REM 错误兜底策略：
 REM   - Docker Desktop 未运行 → 自动启动并等待就绪
@@ -16,13 +21,15 @@ REM   - 容器启动失败 → 自动诊断并显示异常服务日志
 REM   - 健康检查超时 → 分阶段显示进度，失败时自动诊断
 setlocal enabledelayedexpansion
 
-set DO_BUILD=0
-set DO_PULL=1
+set DO_BUILD=1
+set DO_PULL=0
 :parse_args
 if "%~1"=="" goto args_done
-if /i "%~1"=="--build" (set DO_BUILD=1 & set DO_PULL=0 & shift & goto parse_args)
-if /i "%~1"=="--no-pull" (set DO_PULL=0 & shift & goto parse_args)
-echo 未知参数：%~1（支持：--build 本地构建 / --no-pull 跳过拉取） 1>&2
+if /i "%~1"=="--build"    (set DO_BUILD=1 & set DO_PULL=0 & shift & goto parse_args)
+if /i "%~1"=="--pull"     (set DO_BUILD=0 & set DO_PULL=1 & shift & goto parse_args)
+if /i "%~1"=="--no-build" (set DO_BUILD=0 & shift & goto parse_args)
+if /i "%~1"=="--no-pull"  (set DO_PULL=0 & shift & goto parse_args)
+echo 未知参数：%~1（支持：--build / --pull / --no-build / --no-pull） 1>&2
 exit /b 1
 :args_done
 
@@ -196,6 +203,10 @@ if "%DO_BUILD%"=="1" (
         set BUILD_OK=1
       )
     )
+  )
+  if "%DO_PULL%"=="0" (
+    echo [*] 跳过构建与拉取，直接使用本地已有镜像（--no-build）...
+    set BUILD_OK=1
   )
   if "!BUILD_OK!"=="0" (
     docker compose build
