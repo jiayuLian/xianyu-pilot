@@ -114,7 +114,7 @@
 
 > 适合第一次使用的用户。一键脚本会自动生成所有 secrets、bcrypt 密码 hash、`.env` 配置，无需手动创建任何密码文件。
 >
-> 📖 **完整部署教程**（含 Windows/Ubuntu 详细步骤、常见问题、运维命令、进阶配置）：见 [docs/deployment-guide.md](docs/deployment-guide.md)
+> 📖 **完整部署手册**（Docker 与裸机两种方式、无 Docker 环境装法、端口冲突自动处理、网页端初始化、验证清单、故障排查）：见 [INSTALL.md](INSTALL.md)
 
 ### 前置要求
 - Docker 24+ 与 Docker Compose v2（[安装 Docker](https://docs.docker.com/get-docker/)；Ubuntu 上若未安装，`start.sh` 会自动安装）
@@ -124,8 +124,8 @@
 
 1. **克隆仓库**
    ```bash
-   git clone https://github.com/dameng2026/XianYuPilo.git
-   cd XianYuPilo
+   git clone https://github.com/jiayuLian/xianyu-pilot.git
+   cd xianyu-pilot
    ```
 
 2. **一键启动**
@@ -139,8 +139,12 @@
    - 在 `./secrets/` 目录生成所有随机密钥文件（MySQL/Redis/JWT/Cookie/Token 共 7 组，权限 0600）
    - 用 bcrypt cost 12 生成 admin 密码 hash（默认密码 `admin123`，可改）
    - 从 `.env.example` 复制生成 `.env`
-   - 拉取预构建镜像并启动 7 个服务（mysql/redis/migrate/crawler/api/worker/web）
-   - 等待 Web 健康检查通过（最长 3 分钟）
+   - 检查 8080 是否被占用，占用则自动换端口并写回 `.env`
+   - 本地源码构建镜像（本仓库的代码与官方发布镜像不同，默认不拉取）
+   - 启动 7 个服务（mysql/redis/migrate/crawler/api/worker/web）
+   - 等待 Web 健康检查通过（最长 5 分钟）
+
+   > 想用官方发布镜像而非源码构建：`sh ./start.sh --pull`
 
 3. **访问服务**
 
@@ -165,6 +169,7 @@ sh ./start-local.sh
 
 - 前置要求：Python 3.10+、Node.js 18+、本机已运行 MySQL 8 与 Redis 7（Redis 无密码即可）
 - 访问地址：`http://localhost:15176`（默认账号 `admin` / 密码 `admin123`）
+- 端口冲突自动处理：15176/15177/15178 被占用时会自动往后找并写回 `.env`，启动日志会打印实际端口
 - 管理命令：`sh ./status-local.sh` / `sh ./stop-local.sh`（Windows 用 `status-local.bat` / `stop-local.bat`）
 - MySQL root 有密码时：`MYSQL_ROOT_PASSWORD="你的密码" sh ./start-local.sh`
 - 国内网络加速：`PIP_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple" PLAYWRIGHT_DOWNLOAD_HOST="https://npmmirror.com/mirrors/playwright" sh ./start-local.sh`

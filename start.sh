@@ -1,9 +1,15 @@
 #!/bin/sh
-# 一键启动脚本：自动初始化 secrets、拉取镜像、启动服务、等待健康。
+# 一键启动脚本：自动初始化 secrets、构建镜像、启动服务、等待健康。
 # 用法：
-#   sh ./start.sh              # 拉取预构建镜像并启动（推荐）
-#   sh ./start.sh --build      # 本地源码构建并启动
-#   sh ./start.sh --no-pull    # 跳过镜像拉取（用本地已有的镜像）
+#   sh ./start.sh              # 本地源码构建并启动（默认）
+#   sh ./start.sh --pull       # 拉取预构建镜像并启动（官方发布镜像）
+#   sh ./start.sh --no-build   # 不构建，直接用本地已有的镜像
+#
+# 为什么默认源码构建：
+#   docker-compose.yml 里 image: 的默认值指向官方发布的镜像仓库，
+#   那个镜像的代码与本仓库不同（不带本仓库的修复与子账号功能）。
+#   默认拉取会把本地构建结果覆盖掉，所以这里默认走 build。
+#   要使用官方镜像请显式加 --pull。
 #
 # 错误兜底策略：
 #   - Docker 未安装 → 自动安装（get.docker.com，国内网络用阿里云镜像）
@@ -22,13 +28,15 @@ set -u
 PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$PROJECT_DIR"
 
-DO_BUILD=0
-DO_PULL=1
+DO_BUILD=1
+DO_PULL=0
 for arg in "$@"; do
   case "$arg" in
-    --build)   DO_BUILD=1; DO_PULL=0 ;;
-    --no-pull) DO_PULL=0 ;;
-    *) echo "未知参数：$arg（支持：--build 本地构建 / --no-pull 跳过拉取）" >&2; exit 1 ;;
+    --build)    DO_BUILD=1; DO_PULL=0 ;;
+    --pull)     DO_BUILD=0; DO_PULL=1 ;;
+    --no-build) DO_BUILD=0 ;;
+    --no-pull)  DO_PULL=0 ;;
+    *) echo "未知参数：$arg（支持：--build / --pull / --no-build / --no-pull）" >&2; exit 1 ;;
   esac
 done
 
@@ -378,7 +386,7 @@ if ! check_port_available "$WEB_PORT"; then
   fi
 fi
 
-# ---------- 4. 拉取镜像或本地构建 ----------
+# ---------- 4. 本地构建或拉取镜像 ----------
 # 先构建/拉取镜像（不启动服务），以便用 api 镜像兜底生成 bcrypt hash
 build_ok=0
 if [ "$DO_BUILD" = "1" ]; then
@@ -388,28 +396,24 @@ if [ "$DO_BUILD" = "1" ]; then
   else
     die "镜像构建失败。查看错误信息上方输出，或检查网络和磁盘空间"
   fi
-else
+elif [ "$DO_PULL" = "1" ]; then
   pull_ok=0
-  if [ "$DO_PULL" = "1" ]; then
-    # 检测镜像源连通性（默认阿里云 ACR），不可达则直接本地构建
-    info "检测镜像源连通性（阿里云 ACR）..."
-    if check_registry_reachable; then
-      ok "镜像源可达"
-      info "拉取最新镜像（首次约 3-5 分钟）..."
-      if $DOCKER_COMPOSE pull 2>&1; then
-        pull_ok=1
-      else
-        warn "镜像拉取失败（可能是镜像未发布或命名空间不匹配）"
-        info "自动回退到本地源码构建（首次约 5-10 分钟）..."
-        DO_BUILD=1
-      fi
+  # 检测镜像源连通性（默认阿里云 ACR），不可达则直接本地构建
+  info "检测镜像源连通性（阿里云 ACR）..."
+  if check_registry_reachable; then
+    ok "镜像源可达"
+    info "拉取最新镜像（首次约 3-5 分钟）..."
+    if $DOCKER_COMPOSE pull 2>&1; then
+      pull_ok=1
     else
-      warn "镜像源不可达（网络或防火墙限制）"
-      info "建议直接本地构建（避免拉取超时）..."
-      info "如需使用预构建镜像，可在 .env 中切换 GHCR 镜像源或配置代理后重试"
-      info "正在尝试本地构建..."
+      warn "镜像拉取失败（可能是镜像未发布或命名空间不匹配）"
+      info "自动回退到本地源码构建（首次约 5-10 分钟）..."
       DO_BUILD=1
     fi
+  else
+    warn "镜像源不可达（网络或防火墙限制）"
+    info "改用本地源码构建（首次约 5-10 分钟）..."
+    DO_BUILD=1
   fi
   if [ "$pull_ok" = "1" ]; then
     build_ok=1
@@ -420,6 +424,9 @@ else
       die "镜像构建失败。查看错误信息上方输出，或检查网络和磁盘空间"
     fi
   fi
+else
+  info "跳过构建与拉取，直接使用本地已有镜像（--no-build）..."
+  build_ok=1
 fi
 
 # ---------- 4.5 兜底生成 admin bcrypt hash（用 api 镜像） ----------
