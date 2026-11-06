@@ -1292,7 +1292,8 @@ onBeforeUnmount(() => {
 
 .stat-row {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* 固定 5 列在窄容器里会把卡片压到文字区归零，按可用宽度自动降档 */
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
   gap: 16px;
   margin: 14px 0 18px;
 }

@@ -1306,6 +1306,8 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid #f4f7fc;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
+  /* 列宽被压缩时中文会逐字竖排，统一禁止换行，超宽由 .table-wrap 横向滚动 */
+  white-space: nowrap;
 }
 .data-table tbody tr { transition: background 0.15s; }
 .data-table tbody tr:hover { background: #f8fafe; }

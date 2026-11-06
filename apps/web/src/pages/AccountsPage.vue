@@ -9,7 +9,7 @@
       <div v-if="accountListWarning" class="global-notice warning" role="status">{{ accountListWarning }}</div>
       <div v-if="qrSuccessMsg" class="global-notice success">{{ qrSuccessMsg }}</div>
       <div v-if="captchaErrorMsg" class="global-notice error">{{ captchaErrorMsg }}</div>
-      <div class="grid stat-grid" style="grid-template-columns:repeat(5,1fr)">
+      <div class="grid stat-grid">
         <StatCard title="账号总数" :value="accountMetric(stats.total)" change="全部记录" icon="users" />
         <StatCard title="正常账号" :value="accountMetric(stats.normal)" change="当前页" icon="account" color="green" />
         <StatCard title="需验证" :value="accountMetric(stats.verify)" change="当前页" icon="shield" color="orange" />

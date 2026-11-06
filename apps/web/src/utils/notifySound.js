@@ -63,6 +63,9 @@ function playBellTone(ctx, freq, start, duration, peak) {
  * 若浏览器尚未允许音频播放（如未发生用户手势），则静默跳过。
  */
 export function playIncomingMessageSound() {
+  // 用户可以在设置里关掉提示音，关掉后连 AudioContext 都不碰
+  if (!isSoundEnabled()) return
+
   const now = Date.now()
   if (now - lastPlayedAt < THROTTLE_MS) return
   lastPlayedAt = now
@@ -102,4 +105,59 @@ export function primeAudioOnFirstGesture() {
   }
   window.addEventListener('pointerdown', resumeOnce, { passive: true })
   window.addEventListener('keydown', resumeOnce, { passive: true })
+}
+
+/* ---------------- 提示音开关 ---------------- */
+
+const SOUND_ENABLED_KEY = 'xya.sound.enabled'
+
+/**
+ * 提示音是否启用。
+ * 默认开启（保持原有行为）；用户关掉后写 localStorage，
+ * 刷新、重登、换标签页都保持关闭状态。
+ */
+export function isSoundEnabled() {
+  try {
+    const raw = globalThis.localStorage?.getItem(SOUND_ENABLED_KEY)
+    // 只有明确写过 "0" 才算关闭，没写过（null）按开启处理
+    return raw !== '0'
+  } catch {
+    return true
+  }
+}
+
+export function setSoundEnabled(enabled) {
+  try {
+    globalThis.localStorage?.setItem(SOUND_ENABLED_KEY, enabled ? '1' : '0')
+  } catch {
+    // 隐私模式下 localStorage 不可写，忽略即可，本次会话仍按传入值生效
+  }
+  if (!enabled) stopTone()
+  return enabled
+}
+
+/** 停止正在播放的余音（关掉开关时立即静音，不等它自然衰减） */
+function stopTone() {
+  if (!audioCtx) return
+  try {
+    if (audioCtx.state === 'running') {
+      audioCtx.suspend().catch(() => {})
+    }
+  } catch {
+    // 忽略
+  }
+}
+
+/** 试听：忽略开关与节流，用于设置页的「试听」按钮 */
+export function previewMessageSound() {
+  const ctx = getAudioContext()
+  if (!ctx) return false
+  if (ctx.state === 'suspended') {
+    ctx.resume().catch(() => {})
+  }
+  if (ctx.state !== 'running') return false
+  const t0 = ctx.currentTime
+  playBellTone(ctx, 880.0, t0, 0.55, 0.16)
+  playBellTone(ctx, 1318.51, t0 + 0.13, 0.65, 0.14)
+  return true
 }

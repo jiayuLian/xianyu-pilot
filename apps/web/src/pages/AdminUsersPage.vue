@@ -422,6 +422,8 @@ onMounted(load)
   text-align: left;
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
+  /* 与 BaseTable 保持一致：单元格不换行，避免中文逐字竖排 */
+  white-space: nowrap;
 }
 .au-table th {
   background: #f8fbff;

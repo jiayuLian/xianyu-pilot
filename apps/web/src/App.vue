@@ -492,13 +492,70 @@ function onCaptchaRequired() {
   showNotice('当前账号需要完成人机验证后才能继续。', 'warn')
 }
 
+// 已响过的消息标识。SSE 广播可能同一条消息出现多次（发送确认、状态回写），
+// 没有去重就会重复响铃。只保留最近若干条，避免无限增长。
+const playedMessageIds = new Set()
+const PLAYED_MESSAGE_LIMIT = 200
+
+function resolveSoundMessageId(detail) {
+  return String(
+    detail.pnmId
+    || detail.messageId
+    || detail.localMessageId
+    || detail.msgId
+    || detail.id
+    || ''
+  )
+}
+
+/** 判断这条事件是不是自己发出去的消息 */
+function isOutboundMessage(detail) {
+  const direction = String(detail.direction || detail.sendDirection || '').toUpperCase()
+  if (direction === 'OUT' || direction === 'SEND' || direction === 'SENT') return true
+  if (detail.isSend === true || detail.fromMe === true || detail.isSelf === true) return true
+  return false
+}
+
+// 这些类型明确不是「收到买家新消息」，不能触发提示音。
+// 后端 SSE 在没有事件时每 15 秒推一次 type=heartbeat，
+// 连接建立时推一次 type=connected；把它们当成消息就会出现
+// 「浏览器隔一会儿响一下，但没有任何新消息」的现象。
+const NON_MESSAGE_EVENT_TYPES = new Set([
+  'heartbeat', 'ping', 'pong', 'keepalive', 'connected', 'connect', 'ready',
+  'status', 'sync', 'ack', 'progress', 'log', 'update', 'reconnect'
+])
+
+/** 事件里是否带真实消息正文，用于兜住「类型写成 message 但内容是心跳」的情况 */
+function hasMessageBody(detail) {
+  const body = detail.content ?? detail.text ?? detail.message
+    ?? detail.msgContent ?? detail.body ?? detail.summary
+  return typeof body === 'string' && body.trim() !== ''
+}
+
 function onSseEventForSound(event) {
   const detail = event?.detail || {}
-  const type = detail.type || detail.eventType
-  const direction = String(detail.direction || '').toUpperCase()
-  if (type === 'message' && direction !== 'OUT') {
-    playIncomingMessageSound()
+  const type = String(detail.type || detail.eventType || '').toLowerCase()
+
+  if (NON_MESSAGE_EVENT_TYPES.has(type)) return
+  if (type !== 'message') return
+  // 自己发的不响
+  if (isOutboundMessage(detail)) return
+
+  const id = resolveSoundMessageId(detail)
+  // 既没有消息标识也没有正文，判定为状态广播而非新消息，不响
+  if (!id && !hasMessageBody(detail)) return
+
+  // 同一条消息只响一次
+  if (id) {
+    if (playedMessageIds.has(id)) return
+    playedMessageIds.add(id)
+    if (playedMessageIds.size > PLAYED_MESSAGE_LIMIT) {
+      const oldest = playedMessageIds.values().next().value
+      if (oldest !== undefined) playedMessageIds.delete(oldest)
+    }
   }
+
+  playIncomingMessageSound()
 }
 
 function updateMobileState() {

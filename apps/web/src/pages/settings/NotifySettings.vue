@@ -668,6 +668,19 @@
             >{{ browserNotifyButtonText }}</button>
           </div>
 
+          <div class="notify-browser-row">
+            <div>
+              <strong>收到消息时播放提示音</strong>
+              <span>{{ soundEnabled ? '已开启。收到买家新消息时播放一声提示音。' : '已关闭，不再播放任何提示音。' }}</span>
+            </div>
+            <div class="notify-browser-actions">
+              <button type="button" class="notify-browser-btn" @click="previewSound">试听</button>
+              <button type="button" class="notify-browser-btn" @click="toggleSound">
+                {{ soundEnabled ? '关闭提示音' : '开启提示音' }}
+              </button>
+            </div>
+          </div>
+
           <div class="notify-rules-headline">
             <span>通知事件</span>
             <span>启用</span>
@@ -803,6 +816,7 @@ import {
 import { dateTime, recordsOf } from '../../utils/apiData.js'
 import { withBrowserIntentLock } from '../../utils/browserIntentLock.js'
 import { notifyPermission, requestNotifyPermission } from '../../composables/useBrowserNotify.js'
+import { isSoundEnabled, previewMessageSound, setSoundEnabled } from '../../utils/notifySound.js'
 
 defineProps({ active: String })
 
@@ -1181,6 +1195,25 @@ async function enableBrowserNotify() {
     success.value = '浏览器通知已启用'
     setTimeout(() => { success.value = '' }, 3000)
   }
+}
+
+// 收到消息时的提示音开关。存在 localStorage，刷新后保持。
+const soundEnabled = ref(isSoundEnabled())
+
+function toggleSound() {
+  soundEnabled.value = setSoundEnabled(!soundEnabled.value)
+  success.value = soundEnabled.value ? '提示音已开启' : '提示音已关闭'
+  setTimeout(() => { success.value = '' }, 3000)
+}
+
+function previewSound() {
+  if (!previewMessageSound()) {
+    error.value = '当前浏览器阻止了音频播放，请先在页面上点一下再试听'
+    setTimeout(() => { error.value = '' }, 4000)
+    return
+  }
+  success.value = '已播放提示音'
+  setTimeout(() => { success.value = '' }, 2000)
 }
 const notifications = ref([])
 const deliveryLogs = ref([])
@@ -3358,6 +3391,20 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: #72809a;
   line-height: 1.5;
+}
+
+.notify-browser-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.notify-browser-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
 }
 
 .notify-browser-btn {

@@ -11,10 +11,16 @@ export const navGroups = [
     items: [
       { key: 'accounts', label: '闲鱼账号', icon: 'account' },
       { key: 'connections', label: '连接管理', icon: 'link' },
-      { key: 'products', label: '商品管理', icon: 'product' },
+      {
+        key: 'products',
+        label: '商品管理',
+        icon: 'product',
+        children: [
+          { key: 'product-publish', label: '发布商品' },
+        ],
+      },
       { key: 'orders', label: '订单管理', icon: 'record' },
       { key: 'rates', label: '评价管理', icon: 'record' },
-      { key: 'product-publish', label: '发布商品', icon: 'publish', child: true },
     ],
   },
   {
@@ -26,15 +32,27 @@ export const navGroups = [
   {
     title: '自动化',
     items: [
-      { key: 'auto-delivery', label: '自动发货', icon: 'truck' },
-      { key: 'delivery-source-library', label: '货源库', icon: 'board', child: true },
-      { key: 'delivery-statement', label: '发货声明', icon: 'board', child: true },
-      { key: 'card-warehouse', label: '卡密仓库', icon: 'key', child: true },
+      {
+        key: 'auto-delivery',
+        label: '自动发货',
+        icon: 'truck',
+        children: [
+          { key: 'delivery-source-library', label: '货源库' },
+          { key: 'delivery-statement', label: '发货声明' },
+          { key: 'card-warehouse', label: '卡密仓库' },
+        ],
+      },
       { key: 'delivery-records', label: '发货记录', icon: 'record' },
       { key: 'scheduled-tasks', label: '定时任务', icon: 'clock' },
       { key: 'auto-reply', label: '自动回复', icon: 'reply' },
-      { key: 'slider-solve-records', label: '滑块求解', icon: 'shield' },
-      { key: 'remote-slider-api', label: 'API 对接', icon: 'shield', child: true },
+      {
+        key: 'slider-solve-records',
+        label: '滑块求解',
+        icon: 'shield',
+        children: [
+          { key: 'remote-slider-api', label: 'API 对接' },
+        ],
+      },
     ],
   },
   {

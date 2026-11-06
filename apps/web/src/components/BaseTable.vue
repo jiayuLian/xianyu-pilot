@@ -1,4 +1,7 @@
 <template>
+  <!-- 外层负责横向滚动：表格列多、容器窄时（如日志页右侧带 460px 抽屉）
+       直接挤压列宽会让中文逐字换行，宁可滚动也不破坏排版 -->
+  <div class="base-table-wrap">
   <table class="base-table">
     <thead>
       <tr>
@@ -52,12 +55,18 @@
             @change="toggleRow(row, idx)"
           />
         </td>
-        <td v-for="c in columns" :key="c.key">
+        <td
+          v-for="c in columns"
+          :key="c.key"
+          :class="{ 'cell-wrap': c.wrap }"
+          :style="c.width ? { width: c.width, minWidth: c.width } : null"
+        >
           <slot :name="c.key" :row="row">{{ row[c.key] }}</slot>
         </td>
       </tr>
     </tbody>
   </table>
+  </div>
 </template>
 <script setup>
 import { computed, getCurrentInstance } from 'vue'

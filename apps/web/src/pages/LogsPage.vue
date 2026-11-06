@@ -1,5 +1,7 @@
 <template>
-  <div class="grid" style="grid-template-columns:minmax(0,1fr) 460px;gap:18px">
+  <!-- 未选中行时不预留右侧抽屉宽度，否则 460px 空白列会把主表压到 400px 上下，
+       8 列中文全部竖排。选中后才切成两栏。 -->
+  <div class="grid logs-layout" :class="{ 'has-detail': !!detail }">
     <div>
       <div v-if="error" class="global-notice error">{{ error }}</div>
       <div v-if="success" class="global-notice success">{{ success }}</div>
@@ -33,7 +35,7 @@
         <Pagination v-if="dataAvailable === true" :total="total" :current="current" :page-size="size" @page-change="goPage" />
       </CardPanel>
     </div>
-    <div class="right-drawer">
+    <div v-if="detail" class="right-drawer">
       <template v-if="detail">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
           <h3>日志详情</h3>
@@ -202,14 +204,15 @@ function formatDateTime(value) {
 }
 
 const cols = [
-  { key: 'id', title: '日志ID' },
-  { key: 'operationType', title: '操作类型' },
-  { key: 'targetType', title: '目标类型' },
-  { key: 'description', title: '描述' },
-  { key: 'status', title: '状态' },
-  { key: 'operator', title: '操作人' },
-  { key: 'createdTime', title: '操作时间' },
-  { key: 'op', title: '操作' }
+  { key: 'id', title: '日志ID', width: '88px' },
+  { key: 'operationType', title: '操作类型', width: '110px' },
+  { key: 'targetType', title: '目标类型', width: '110px' },
+  // 描述里是 api_mutation 的原始 JSON，必须允许折行，否则单行会把表格撑到几千像素
+  { key: 'description', title: '描述', wrap: true },
+  { key: 'status', title: '状态', width: '110px' },
+  { key: 'operator', title: '操作人', width: '100px' },
+  { key: 'createdTime', title: '操作时间', width: '170px' },
+  { key: 'op', title: '操作', width: '72px' }
 ]
 
 const operationTypeCount = computed(() => new Set(rows.value.map(row => row.operationType).filter(Boolean)).size)
@@ -303,12 +306,44 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* 单选一栏；打开详情后才启用右侧抽屉 */
+.logs-layout {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+.logs-layout.has-detail {
+  grid-template-columns: minmax(0, 1fr) 460px;
+}
+
+/* === 中等宽度适配（1200~1500px）===
+   1920 屏够用，但 1080~1400 的窗口里 460px 抽屉会把主表压到 360px 上下，
+   统计卡片和 8 列表格一起崩。这里按可用宽度收窄抽屉。 */
+@media (max-width: 1500px) {
+  .logs-layout.has-detail {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 14px;
+  }
+}
+
+/* === 窄屏（900~1200px）=== 抽屉改为在主表下方堆叠，表格吃满整行宽度 */
+@media (max-width: 1200px) {
+  .logs-layout.has-detail {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .right-drawer {
+    width: 100%;
+    max-width: none;
+    min-height: auto;
+  }
+}
+
 /* === 移动端适配 (max-width: 900px) === */
 @media (max-width: 900px) {
-  /* 覆盖根容器内联 grid: minmax(0,1fr) 460px → 单列堆叠 */
-  .grid[style*="460px"] {
-    grid-template-columns: minmax(0, 1fr) !important;
-    gap: 12px !important;
+  .logs-layout,
+  .logs-layout.has-detail {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
   }
   /* 右侧详情抽屉在移动端全宽堆叠到下方 */
   .right-drawer {
