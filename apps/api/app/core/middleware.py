@@ -19,6 +19,16 @@ from .redis_client import RedisUnavailableError, redis_incr
 from .response import ResultObject
 from .security import authenticate_token, request_client_ip
 
+
+def _normalize_role(value) -> str:
+    """token 里的历史角色写法统一收敛到 super / operator / viewer。"""
+    raw = str(value or "").strip().casefold()
+    if raw in ("super", "admin", "root"):
+        return "super"
+    if raw in ("viewer", "readonly", "read"):
+        return "viewer"
+    return "operator"
+
 logger = logging.getLogger(__name__)
 
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -244,9 +254,10 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 return _json_error(401, "暂未登录或登录已过期", request_id)
             request.state.auth_payload = payload
             request.state.current_user = {
-                "user_id": 0,
-                "username": payload["username"],
-                "role": "admin",
+                "user_id": int(payload.get("uid") or 0),
+                "username": payload.get("username") or "",
+                # token 里的 role 决定权限；旧 token 写的是 "admin"，归一为 super
+                "role": _normalize_role(payload.get("role")),
                 "jti": payload["jti"],
                 "exp": payload["exp"],
             }

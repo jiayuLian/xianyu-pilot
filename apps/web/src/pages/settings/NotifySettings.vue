@@ -650,15 +650,27 @@
           <div class="notify-panel-head">
             <div>
               <h3>通知规则矩阵</h3>
-              <p>把“触发事件”和“应用内通知”并排展示，减少切换心智。</p>
+              <p>按事件控制是否推送到已绑定渠道。浏览器弹窗是全局开关，与事件无关。</p>
             </div>
             <span class="notify-tiny-chip">{{ events.length }} 项规则</span>
+          </div>
+
+          <div class="notify-browser-row">
+            <div>
+              <strong>浏览器弹窗提醒</strong>
+              <span>{{ browserNotifyHint }}</span>
+            </div>
+            <button
+              type="button"
+              class="notify-browser-btn"
+              :disabled="browserNotifyState === 'granted' || browserNotifyState === 'unsupported'"
+              @click="enableBrowserNotify"
+            >{{ browserNotifyButtonText }}</button>
           </div>
 
           <div class="notify-rules-headline">
             <span>通知事件</span>
             <span>启用</span>
-            <span>应用内通知</span>
           </div>
 
           <div class="notify-rules-groups">
@@ -682,9 +694,6 @@
                 <b>{{ event.event }}</b>
                 <div class="notify-switch-button">
                   <ToggleSwitch :on="!!event.enabled" :label="`${event.event} 启用`" @click="toggleEvent(event, 'enabled')" />
-                </div>
-                <div class="notify-switch-button">
-                  <ToggleSwitch :on="!!event.app" :label="`${event.event} 应用内通知`" @click="toggleEvent(event, 'app')" />
                 </div>
               </div>
             </section>
@@ -793,6 +802,7 @@ import {
 } from '../../api/notification.js'
 import { dateTime, recordsOf } from '../../utils/apiData.js'
 import { withBrowserIntentLock } from '../../utils/browserIntentLock.js'
+import { notifyPermission, requestNotifyPermission } from '../../composables/useBrowserNotify.js'
 
 defineProps({ active: String })
 
@@ -1110,13 +1120,17 @@ const CHANNEL_TUTORIALS = {
   }
 }
 
+// 只保留后端 notify_dispatcher.py 里真实存在的 7 个事件常量。
+// 「激活提醒 / 库存预警 / 整点报表 / 代发货提醒」在后端没有对应实现，
+// 「代发货提醒」走站内 notification 表而不经过推送渠道，开关都无效，
+// 留着只会让人以为配了就会收到。
 const EVENT_GROUPS = [
   {
     key: 'order',
     label: '履约与订单',
     icon: 'notifyOrder',
     tone: '',
-    events: ['激活提醒', '新订单提醒', '自动发货成功', '自动发货失败', '代发货提醒']
+    events: ['新订单提醒', '自动发货成功', '自动发货失败']
   },
   {
     key: 'risk',
@@ -1124,13 +1138,6 @@ const EVENT_GROUPS = [
     icon: 'notifyRisk',
     tone: 'amber',
     events: ['账号掉线', 'Cookie 到期', '人机验证', '人机验证成功']
-  },
-  {
-    key: 'ops',
-    label: '经营与汇总',
-    icon: 'notifyReport',
-    tone: 'green',
-    events: ['库存预警', '整点报表', '应用内通知']
   }
 ]
 
@@ -1144,8 +1151,8 @@ const EXAMPLE_PREVIEW = [
   },
   {
     id: 'preview-2',
-    title: '库存预警提醒',
-    content: '这是预警样式示例，不代表当前存在真实库存异常。',
+    title: '账号异常提醒',
+    content: '这是告警样式示例，代表账号掉线、Cookie 到期这类需要人工处理的通知。',
     tone: 'warn',
     icon: 'notifyAlert'
   }
@@ -1153,6 +1160,28 @@ const EXAMPLE_PREVIEW = [
 
 const channels = ref(normalizeChannels([]))
 const events = ref(normalizeEvents([]))
+const browserNotifyState = ref(notifyPermission())
+const browserNotifyHint = computed(() => {
+  if (browserNotifyState.value === 'unsupported') return '当前浏览器不支持系统通知'
+  if (browserNotifyState.value === 'denied') return '已被浏览器拒绝，需在站点设置里手动允许'
+  if (browserNotifyState.value === 'granted') return '已启用，页面打开时会弹出系统通知'
+  return '未启用。开启后自动发货失败、账号掉线等提醒会直接弹到桌面'
+})
+const browserNotifyButtonText = computed(() => {
+  if (browserNotifyState.value === 'unsupported') return '不支持'
+  if (browserNotifyState.value === 'denied') return '已被拒绝'
+  if (browserNotifyState.value === 'granted') return '已启用'
+  return '启用浏览器通知'
+})
+
+async function enableBrowserNotify() {
+  const result = await requestNotifyPermission()
+  browserNotifyState.value = result
+  if (result === 'granted') {
+    success.value = '浏览器通知已启用'
+    setTimeout(() => { success.value = '' }, 3000)
+  }
+}
 const notifications = ref([])
 const deliveryLogs = ref([])
 const selectedKey = ref('webhook')
@@ -3305,9 +3334,54 @@ onBeforeUnmount(() => {
   color: #5f7698;
 }
 
+.notify-browser-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 12px 18px 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f4f8ff;
+  border: 1px solid #e3edff;
+}
+
+.notify-browser-row strong {
+  display: block;
+  font-size: 13px;
+  color: #15213d;
+}
+
+.notify-browser-row span {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #72809a;
+  line-height: 1.5;
+}
+
+.notify-browser-btn {
+  flex: none;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid #d5e3ff;
+  background: #fff;
+  color: #0d6bff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.notify-browser-btn:disabled {
+  color: #9aa8c0;
+  border-color: #e7edf7;
+  cursor: not-allowed;
+}
+
 .notify-rules-headline {
   display: grid;
-  grid-template-columns: 1fr 64px 92px;
+  grid-template-columns: 1fr 64px;
   gap: 8px;
   padding: 14px 18px 0;
   color: #8092af;
@@ -3315,8 +3389,7 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 
-.notify-rules-headline span:nth-child(2),
-.notify-rules-headline span:nth-child(3) {
+.notify-rules-headline span:nth-child(2) {
   text-align: center;
 }
 
@@ -3376,7 +3449,7 @@ onBeforeUnmount(() => {
 
 .notify-rule-row {
   display: grid;
-  grid-template-columns: 1fr 64px 92px;
+  grid-template-columns: 1fr 64px;
   gap: 8px;
   align-items: center;
   padding: 10px 0;

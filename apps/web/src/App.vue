@@ -91,6 +91,7 @@ import { confirmAction } from './utils/confirmAction.js'
 import { closeSse, connectSse } from './utils/sse.js'
 import { installClientErrorReporter, recordClientError } from './utils/errorReporter.js'
 import { playIncomingMessageSound, primeAudioOnFirstGesture } from './utils/notifySound.js'
+import { startBrowserNotify, stopBrowserNotify } from './composables/useBrowserNotify.js'
 import { DEFAULT_PAGE, NOT_FOUND_PAGE, resolveHashRoute } from './utils/routeState.js'
 import { runNavigationGuard, clearNavigationGuard } from './utils/navigationGuard.js'
 import {
@@ -151,6 +152,7 @@ const pageMap = {
   'slider-solve-records': asyncPage(() => import('./pages/SliderSolveRecordsPage.vue')),
   'remote-slider-api': asyncPage(() => import('./pages/RemoteSliderApiPage.vue')),
   logs: asyncPage(() => import('./pages/LogsPage.vue')),
+  'admin-users': asyncPage(() => import('./pages/AdminUsersPage.vue')),
   feedback: asyncPage(() => import('./pages/FeedbackPage.vue')),
   'ad-application': asyncPage(() => import('./pages/AdApplicationPage.vue')),
   'settings-notify': asyncPage(() => import('./pages/settings/NotifySettings.vue')),
@@ -520,6 +522,8 @@ onMounted(() => {
   window.addEventListener('xya-request-error', onRequestError)
   primeAudioOnFirstGesture()
   boot()
+  // 浏览器系统通知：仅在已登录且浏览器已授权时生效，轮询逻辑内部自行判断
+  if (isAuthed()) startBrowserNotify()
 })
 
 onBeforeUnmount(() => {
@@ -536,6 +540,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('xya-request-error', onRequestError)
   if (requestBusyTimer) clearTimeout(requestBusyTimer)
   if (noticeTimer) clearTimeout(noticeTimer)
+  stopBrowserNotify()
   closeSse()
 })
 

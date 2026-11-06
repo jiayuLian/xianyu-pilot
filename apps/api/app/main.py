@@ -194,6 +194,11 @@ if settings.trusted_hosts_list:
 app.add_middleware(RequestBodyLimitMiddleware, max_bytes=settings.max_request_body_bytes)
 app.add_middleware(ResultEnvelopeStatusMiddleware)
 app.add_middleware(MutationAuditMiddleware)
+# 权限守卫必须排在 RequestContextMiddleware 内侧，后者负责解析 token 并写入
+# request.state.current_user，守卫依赖这个值判断角色。
+from app.core.permission_guard import PermissionGuardMiddleware
+
+app.add_middleware(PermissionGuardMiddleware)
 app.add_middleware(RequestContextMiddleware)
 
 # 路由（延迟导入避免循环依赖）

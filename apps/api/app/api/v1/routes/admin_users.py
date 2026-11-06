@@ -253,6 +253,10 @@ async def set_permissions(
         )
         await _audit(db, current.get("username", "admin"), "set_permissions", str(user_id))
         await db.commit()
+        # 权限变了要让守卫的缓存立刻失效，否则最长 60 秒内仍按旧权限放行
+        from ....core.permission_guard import invalidate_permission_cache
+
+        invalidate_permission_cache(user_id)
     except Exception:
         await db.rollback()
         logger.error("Set permissions failed", exc_info=True)

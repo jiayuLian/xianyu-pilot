@@ -41,6 +41,7 @@ export const navGroups = [
     title: '系统',
     items: [
       { key: 'logs', label: '操作日志', icon: 'log' },
+      { key: 'admin-users', label: '子账号', icon: 'account' },
       { key: 'feedback', label: '反馈建议', icon: 'reply' },
       { key: 'ad-application', label: '广告申请', icon: 'opportunity' },
       { key: 'settings-notify', label: '通知设置', icon: 'bell' },
@@ -81,6 +82,7 @@ export const pageTitles = {
   'slider-solve-records': ['滑块求解', '查看滑块验证求解记录与状态'],
   'remote-slider-api': ['API 对接', '对接商业版远程滑块求解 API，提升求解通过率'],
   logs: ['操作日志', '查看系统操作与关键行为记录'],
+  'admin-users': ['子账号管理', '创建下属账号、分配角色与资源权限'],
   feedback: ['反馈建议', '提交产品建议、Bug 反馈与功能诉求'],
   'ad-application': ['广告申请', '查看真实商业套餐；未配置时提交与支付保持禁用'],
   'settings-ai-cs': ['系统设置 / AI 客服配置', '管理 AI 客服的人设、知识库、聊天规则与测试回复'],
